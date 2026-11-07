@@ -4,7 +4,7 @@ Website, booking system and admin dashboard for **Akin Photography**, Onala Stre
 
 - Seven public pages in English: Home, About, Services, Portfolio, Pricing, Booking, Contact
 - Booking requests are stored in the dashboard and can be sent to the business on **WhatsApp**
-- Admin dashboard at `/admin`: gallery upload, services and prices, bookings, enquiries, testimonials, opening hours, social links, page text
+- Admin dashboard at `/admin` with five tabs: Overview, Inbox (bookings, calendar, enquiries), Photos (drag to reorder, bulk edit, choose where each photo is used), Website (page text, services and prices, testimonials, SEO) and Settings (contact details, hours, social links, account). Optional browser alerts for new requests while the admin is open
 - Photographs are resized automatically (WebP, three sizes) for fast loading on slow connections
 - SEO: per-page titles and descriptions, Open Graph, JSON-LD, `sitemap.xml`, `robots.txt`
 

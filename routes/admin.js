@@ -7,6 +7,7 @@ const { SCHEMA, CATEGORIES } = require('../lib/content');
 const sec = require('../lib/security');
 const images = require('../lib/images');
 const { esc } = require('../lib/ui');
+const { STARTER_TITLES } = require('../lib/seed');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 20 } });
@@ -16,19 +17,27 @@ const secure = process.env.NODE_ENV === 'production';
 
 router.use((req, res, next) => { res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Robots-Tag', 'noindex, nofollow'); next(); });
 
-/* ───────── layout ───────── */
-const NAV = [['', 'Overview'], ['bookings', 'Bookings'], ['enquiries', 'Enquiries'], ['gallery', 'Gallery'], ['services', 'Services & prices'], ['testimonials', 'Testimonials'],
-  ['content/home', 'Home page'], ['content/about', 'About page'], ['settings/business', 'Contact details'], ['hours', 'Opening hours'], ['settings/social', 'Social media'], ['content/seo', 'Search & sharing'], ['account', 'Account']];
+/* ───────── layout: five sidebar tabs, everything else lives in sub-tabs ───────── */
+const GROUPS = [
+  { id: 'overview', label: 'Overview', items: [['', 'Overview']] },
+  { id: 'inbox', label: 'Inbox', items: [['bookings', 'Bookings'], ['bookings/calendar', 'Calendar'], ['enquiries', 'Enquiries']] },
+  { id: 'photos', label: 'Photos', items: [['gallery', 'Gallery']] },
+  { id: 'website', label: 'Website', items: [['content/home', 'Home page'], ['content/about', 'About page'], ['services', 'Services & prices'], ['testimonials', 'Testimonials'], ['content/seo', 'Search & sharing']] },
+  { id: 'settings', label: 'Settings', items: [['settings/business', 'Contact details'], ['hours', 'Opening hours'], ['settings/social', 'Social media'], ['account', 'Account']] },
+];
+const pill = (key, n) => `<span class="pill" data-pill="${key}" ${n ? '' : 'hidden'}>${n || ''}</span>`;
+function counts() { return { b: db.prepare("SELECT COUNT(*) c FROM bookings WHERE status='pending'").get().c, e: db.prepare('SELECT COUNT(*) c FROM enquiries WHERE is_read=0').get().c }; }
 function shell(req, title, body, active) {
-  const s = req.session;
+  const s = req.session, c = counts();
   const flash = req.query.ok ? `<p class="flash ok" role="status">${esc(String(req.query.ok).slice(0, 120))}</p>` : req.query.err ? `<p class="flash bad" role="alert">${esc(String(req.query.err).slice(0, 160))}</p>` : '';
-  const counts = { b: db.prepare("SELECT COUNT(*) c FROM bookings WHERE status='pending'").get().c, e: db.prepare('SELECT COUNT(*) c FROM enquiries WHERE is_read=0').get().c };
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
-<title>${esc(title)} · Akin Photography admin</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/css/admin.css?v=1"></head><body>
+  const group = GROUPS.find((g) => g.items.some(([p]) => p === active)) || GROUPS[0];
+  const sub = group.items.length > 1 ? `<nav class="subtabs" aria-label="${esc(group.label)}">${group.items.map(([p, l]) => `<a href="/admin/${p}" ${p === active ? 'aria-current="page"' : ''}>${l}${p === 'bookings' ? pill('b', c.b) : ''}${p === 'enquiries' ? pill('e', c.e) : ''}</a>`).join('')}</nav>` : '';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="csrf" content="${s.csrf}">
+<title>${esc(title)} · Akin Photography admin</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/css/admin.css?v=2"></head><body data-total="${c.b + c.e}">
 <aside class="side"><a class="logo" href="/admin"><b>AKIN</b> PHOTOGRAPHY<small>Admin</small></a>
-<nav>${NAV.map(([p, l]) => `<a href="/admin/${p}" ${p === active ? 'aria-current="page"' : ''}>${l}${p === 'bookings' && counts.b ? `<span class="pill">${counts.b}</span>` : ''}${p === 'enquiries' && counts.e ? `<span class="pill">${counts.e}</span>` : ''}</a>`).join('')}</nav>
-<div class="side-foot"><a href="/" target="_blank" rel="noopener">View website ↗</a><form method="post" action="/admin/logout"><input type="hidden" name="_csrf" value="${s.csrf}"><button>Sign out</button></form></div></aside>
-<main class="main"><h1>${esc(title)}</h1>${flash}${body}</main><script src="/js/admin.js?v=1" defer></script></body></html>`;
+<nav class="main-nav" aria-label="Admin">${GROUPS.map((g) => `<a href="/admin/${g.items[0][0]}" ${g === group ? 'aria-current="page"' : ''}>${g.label}${g.id === 'inbox' ? pill('t', c.b + c.e) : ''}</a>`).join('')}</nav>
+<div class="side-foot"><button type="button" class="alerts" id="alerts" hidden>🔔 Turn on alerts</button><a href="/" target="_blank" rel="noopener">View website ↗</a><form method="post" action="/admin/logout"><input type="hidden" name="_csrf" value="${s.csrf}"><button>Sign out</button></form></div></aside>
+<main class="main">${sub}<h1>${esc(title)}</h1>${flash}${body}</main><script src="/js/admin.js?v=2" defer></script></body></html>`;
 }
 const csrf = (req) => `<input type="hidden" name="_csrf" value="${req.session.csrf}">`;
 const back = (res, to, ok, err) => res.redirect(303, `${to}${to.includes('?') ? '&' : '?'}${err ? 'err=' + encodeURIComponent(err) : 'ok=' + encodeURIComponent(ok || 'Saved')}`);
@@ -66,48 +75,112 @@ const needCsrf = (req, res, next) => {
 router.post('/logout', form, needCsrf, (req, res) => { sec.destroySession(req.cookies[COOKIE]); res.clearCookie(COOKIE, { path: '/admin' }); res.redirect(303, '/admin/login'); });
 
 /* ───────── overview ───────── */
+const todayLagos = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos' }).format(new Date());
+const waDigits = (p) => require('../lib/ui').digits(p);
+const first = (n) => String(n || '').trim().split(/\s+/)[0] || '';
 router.get('/', (req, res) => {
   const S = settings();
   const n = (sql) => db.prepare(sql).get().c;
-  const stats = [['New booking requests', n("SELECT COUNT(*) c FROM bookings WHERE status='pending'"), 'bookings'], ['Unread enquiries', n('SELECT COUNT(*) c FROM enquiries WHERE is_read=0'), 'enquiries'], ['Photographs in gallery', n('SELECT COUNT(*) c FROM images'), 'gallery'], ['Active services', n('SELECT COUNT(*) c FROM services WHERE active=1'), 'services']];
-  const todo = [];
-  if (!n('SELECT COUNT(*) c FROM images')) todo.push(['Your gallery is showing sample tiles. Upload your real photographs.', 'gallery']);
-  if (!S.whatsapp) todo.push(['Add your WhatsApp number so the WhatsApp buttons and booking messages appear.', 'settings/business']);
-  if (!S.phone) todo.push(['Add your phone number so visitors can call you.', 'settings/business']);
-  if (!q.services().some((s) => s.price)) todo.push(['No prices are set, so every service says “Price on request”. Add prices where you want them shown.', 'services']);
-  const recent = db.prepare('SELECT * FROM bookings ORDER BY id DESC LIMIT 5').all();
+  const c = counts();
+  const stats = [['New booking requests', c.b, 'bookings'], ['Unread enquiries', c.e, 'enquiries'], ['Photographs', n('SELECT COUNT(*) c FROM images'), 'gallery'], ['Services shown', n('SELECT COUNT(*) c FROM services WHERE active=1'), 'services']];
+  const starter = db.prepare(`SELECT COUNT(*) c FROM images WHERE title IN (${STARTER_TITLES.map(() => '?').join(',')})`).get(...STARTER_TITLES).c;
+  let hoursSet = false; try { hoursSet = JSON.parse(S.hours).some((h) => (h.text || '').trim()); } catch { /* */ }
+  const socialSet = ['instagram', 'facebook', 'tiktok', 'x', 'youtube'].some((k) => S[k]);
+  const list = [
+    [!starter, starter ? `Replace the ${starter} starter photograph${starter === 1 ? '' : 's'} with your own work.` : 'Your own photographs are on the site.', 'gallery'],
+    [!!waDigits(S.whatsapp), 'Add your WhatsApp number so the WhatsApp buttons and booking messages appear.', 'settings/business'],
+    [!!waDigits(S.phone), 'Add your phone number so visitors can call you.', 'settings/business'],
+    [q.services().some((s) => s.price), 'Set prices where you want them shown (otherwise services say “Price on request”).', 'services'],
+    [hoursSet, 'Add your opening hours.', 'hours'],
+    [socialSet, 'Add your social media links.', 'settings/social'],
+  ];
+  const done = list.filter((x) => x[0]).length;
+  const recent = db.prepare("SELECT * FROM bookings WHERE status='pending' ORDER BY id DESC LIMIT 5").all();
+  const upcoming = db.prepare("SELECT * FROM bookings WHERE status='confirmed' AND date>=? ORDER BY date,time LIMIT 5").all(todayLagos());
+  const rows = (arr, empty) => arr.length ? `<ul class="rows">${arr.map((b) => `<li><a href="/admin/bookings?open=${b.id}"><b>${esc(b.name)}</b><span>${esc(b.service_name)}</span><span>${esc(b.date)} · ${esc(b.time)}</span></a></li>`).join('')}</ul>` : `<p class="muted">${empty}</p>`;
   const body = `<div class="stats">${stats.map(([l, v, p]) => `<a class="stat" href="/admin/${p}"><b>${v}</b><span>${l}</span></a>`).join('')}</div>
-${todo.length ? `<section class="card"><h2>To do</h2><ul class="todo">${todo.map(([t, p]) => `<li><a href="/admin/${p}">${esc(t)}</a></li>`).join('')}</ul></section>` : ''}
-<section class="card"><h2>Latest booking requests</h2>${recent.length ? `<table><thead><tr><th>Ref</th><th>Name</th><th>Service</th><th>Wanted</th><th>Status</th></tr></thead><tbody>${recent.map((b) => `<tr><td>${esc(b.ref)}</td><td>${esc(b.name)}</td><td>${esc(b.service_name)}</td><td>${esc(b.date)} ${esc(b.time)}</td><td><span class="tag ${b.status}">${b.status}</span></td></tr>`).join('')}</tbody></table>` : '<p class="muted">No booking requests yet.</p>'}</section>`;
+<div class="cols"><section class="card"><h2>Waiting for a reply</h2>${rows(recent, 'No new booking requests.')}</section>
+<section class="card"><h2>Coming up</h2>${rows(upcoming, 'No confirmed sessions yet.')}</section></div>
+<section class="card"><h2>Setting up <span class="muted">${done} of ${list.length} done</span></h2><div class="bar"><i style="width:${Math.round((done / list.length) * 100)}%"></i></div><ul class="checks">${list.map(([ok, t, p]) => `<li class="${ok ? 'ok' : ''}"><span aria-hidden="true">${ok ? '✓' : '○'}</span>${ok ? `<span>${esc(t)}</span>` : `<a href="/admin/${p}">${esc(t)}</a>`}</li>`).join('')}</ul></section>`;
   res.type('html').send(shell(req, 'Overview', body, ''));
 });
+router.get('/api/counts', (req, res) => res.json(counts()));
 
 /* ───────── bookings ───────── */
 const STATUSES = ['pending', 'confirmed', 'completed', 'declined'];
+const likeEsc = (s) => '%' + s.replace(/[\\%_]/g, '\\$&') + '%';
+function waReplies(b) {
+  const d = waDigits(b.phone); if (!d) return '';
+  const nm = first(b.name), when = `${b.date} at ${b.time}`;
+  const msgs = [
+    ['Confirm', `Hello ${nm}, this is Akin Photography. Your booking request ${b.ref} for ${b.service_name} on ${when} is confirmed. We look forward to seeing you.`],
+    ['Suggest another time', `Hello ${nm}, this is Akin Photography. Thank you for your request ${b.ref} for ${b.service_name}. We are not available on ${when}. Could we do another day or time?`],
+    ['Ask for details', `Hello ${nm}, this is Akin Photography. Thank you for your request ${b.ref} for ${b.service_name} on ${when}. Could you tell us a little more about what you have in mind?`],
+    ['Message', `Hello ${nm}, this is Akin Photography. Regarding your request ${b.ref}: `],
+  ];
+  return `<div class="replies"><span class="muted">Reply on WhatsApp:</span>${msgs.map(([l, m]) => `<a class="btn small ghost" href="https://wa.me/${d}?text=${encodeURIComponent(m)}" target="_blank" rel="noopener">${l}</a>`).join('')}</div>`;
+}
 router.get('/bookings', (req, res) => {
   const st = STATUSES.includes(req.query.status) ? req.query.status : '';
-  const rows = st ? db.prepare('SELECT * FROM bookings WHERE status=? ORDER BY id DESC').all(st) : db.prepare('SELECT * FROM bookings ORDER BY id DESC').all();
-  const wa = (b) => { const d = String(b.phone).replace(/\D/g, ''); return d.length >= 9 ? `https://wa.me/${d.startsWith('0') ? '234' + d.slice(1) : d}` : ''; };
-  const body = `<p class="tabs">${['', ...STATUSES].map((s) => `<a href="/admin/bookings${s ? '?status=' + s : ''}" ${s === st ? 'aria-current="true"' : ''}>${s || 'All'}</a>`).join('')}</p>
-${rows.length ? rows.map((b) => `<article class="card booking"><header><div><h2>${esc(b.name)} <span class="tag ${b.status}">${b.status}</span></h2><p class="muted">${esc(b.ref)} · received ${fmt(b.created)}</p></div></header>
-<dl class="kv"><div><dt>Service</dt><dd>${esc(b.service_name)}</dd></div><div><dt>Wanted</dt><dd>${esc(b.date)} at ${esc(b.time)}</dd></div><div><dt>Where</dt><dd>${b.mode === 'mobile' ? 'Mobile: ' + esc(b.location) : 'Studio'}</dd></div><div><dt>Phone</dt><dd><a href="tel:${esc(b.phone)}">${esc(b.phone)}</a>${wa(b) ? ` · <a href="${wa(b)}" target="_blank" rel="noopener">WhatsApp</a>` : ''}</dd></div></dl>
-${b.details ? `<p class="detail">${esc(b.details)}</p>` : ''}
+  const term = String(req.query.q || '').trim().slice(0, 60), openId = Number(req.query.open) || 0;
+  const where = [], args = [];
+  if (st) { where.push('status=?'); args.push(st); }
+  if (term) { where.push("(name LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' OR ref LIKE ? ESCAPE '\\' OR service_name LIKE ? ESCAPE '\\')"); const l = likeEsc(term); args.push(l, l, l, l); }
+  const rows = db.prepare(`SELECT * FROM bookings ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END, id DESC LIMIT 200`).all(...args);
+  const cnt = Object.fromEntries(db.prepare('SELECT status, COUNT(*) c FROM bookings GROUP BY status').all().map((r) => [r.status, r.c]));
+  const total = Object.values(cnt).reduce((a, b) => a + b, 0);
+  const href = (s) => `/admin/bookings?${new URLSearchParams({ ...(s ? { status: s } : {}), ...(term ? { q: term } : {}) })}`;
+  const item = (b) => `<details class="card bk ${b.status === 'pending' ? 'new' : ''}" ${b.id === openId || rows.length === 1 && term ? 'open' : ''}>
+<summary><span class="who">${esc(b.name)}</span><span class="what">${esc(b.service_name)}</span><span class="when">${esc(b.date)} · ${esc(b.time)}</span><span class="tag ${b.status}">${b.status}</span></summary>
+<dl class="kv"><div><dt>Reference</dt><dd>${esc(b.ref)}</dd></div><div><dt>Received</dt><dd>${fmt(b.created)}</dd></div><div><dt>Where</dt><dd>${b.mode === 'mobile' ? 'Mobile: ' + esc(b.location) : 'Studio'}</dd></div><div><dt>Phone</dt><dd><a href="tel:${esc(b.phone)}">${esc(b.phone)}</a></dd></div></dl>
+${b.details ? `<p class="detail">${esc(b.details)}</p>` : ''}${waReplies(b)}
 <form class="inline" method="post" action="/admin/bookings/${b.id}">${csrf(req)}<label>Status<select name="status">${STATUSES.map((s) => `<option ${s === b.status ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="grow">Private note<input name="note" maxlength="500" value="${esc(b.note)}"></label><button class="btn">Save</button></form>
-<form method="post" action="/admin/bookings/${b.id}/delete" data-confirm="Delete this booking request?">${csrf(req)}<button class="link-danger">Delete</button></form></article>`).join('') : '<p class="muted">Nothing here yet.</p>'}`;
+<form method="post" action="/admin/bookings/${b.id}/delete" data-confirm="Delete this booking request?">${csrf(req)}<button class="link-danger">Delete</button></form></details>`;
+  const body = `<form class="search" method="get" action="/admin/bookings" role="search">${st ? `<input type="hidden" name="status" value="${st}">` : ''}<input type="search" name="q" value="${esc(term)}" placeholder="Search name, phone, reference or service" aria-label="Search bookings"><button class="btn">Search</button>${term ? `<a class="btn ghost" href="${href(st)}">Clear</a>` : ''}</form>
+<p class="tabs">${[['', 'All', total], ...STATUSES.map((s) => [s, s, cnt[s] || 0])].map(([s, l, n]) => `<a href="${href(s)}" ${s === st ? 'aria-current="true"' : ''}>${l} <small>${n}</small></a>`).join('')}</p>
+${rows.length ? rows.map(item).join('') : `<p class="muted">${term || st ? 'No bookings match.' : 'No booking requests yet. They will appear here, and you will get an alert if you turned alerts on.'}</p>`}`;
   res.type('html').send(shell(req, 'Bookings', body, 'bookings'));
+});
+router.get('/bookings/calendar', (req, res) => {
+  const today = todayLagos(), mm = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(req.query.m || '')) ? req.query.m : today.slice(0, 7);
+  const [y, m] = mm.split('-').map(Number);
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate(), lead = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;
+  const by = {};
+  for (const b of db.prepare("SELECT * FROM bookings WHERE date LIKE ? AND status!='declined' ORDER BY time").all(`${mm}-%`)) (by[b.date] = by[b.date] || []).push(b);
+  const shift = (d) => { const t = new Date(Date.UTC(y, m - 1 + d, 1)); return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}`; };
+  const label = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, 1)));
+  const cells = [...Array(lead).fill('<div class="day empty"></div>'), ...Array.from({ length: days }, (_, i) => {
+    const d = `${mm}-${String(i + 1).padStart(2, '0')}`, ev = by[d] || [];
+    return `<div class="day ${d === today ? 'today' : ''} ${ev.length ? 'has' : ''}"><b>${i + 1}</b>${ev.map((b) => `<a class="ev ${b.status}" href="/admin/bookings?open=${b.id}" title="${esc(b.service_name)}">${esc(b.time)} ${esc(first(b.name))}</a>`).join('')}</div>`;
+  })].join('');
+  const body = `<div class="cal-head"><a class="btn small ghost" href="/admin/bookings/calendar?m=${shift(-1)}">← Previous</a><h2>${label}</h2><a class="btn small ghost" href="/admin/bookings/calendar?m=${shift(1)}">Next →</a>${mm !== today.slice(0, 7) ? `<a class="btn small ghost" href="/admin/bookings/calendar">Today</a>` : ''}</div>
+<div class="cal"><div class="dow">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => `<span>${d}</span>`).join('')}</div><div class="days">${cells}</div></div>
+<p class="muted legend"><span class="ev pending">Waiting</span> <span class="ev confirmed">Confirmed</span> <span class="ev completed">Done</span> Declined requests are hidden.</p>`;
+  res.type('html').send(shell(req, 'Calendar', body, 'bookings/calendar'));
 });
 router.post('/bookings/:id', form, needCsrf, (req, res) => {
   const st = STATUSES.includes(req.body.status) ? req.body.status : 'pending';
   db.prepare('UPDATE bookings SET status=?, note=? WHERE id=?').run(st, String(req.body.note || '').slice(0, 500), Number(req.params.id));
-  back(res, '/admin/bookings', 'Booking updated');
+  back(res, `/admin/bookings?open=${Number(req.params.id)}`, 'Booking updated');
 });
 router.post('/bookings/:id/delete', form, needCsrf, (req, res) => { db.prepare('DELETE FROM bookings WHERE id=?').run(Number(req.params.id)); back(res, '/admin/bookings', 'Booking deleted'); });
 
 /* ───────── enquiries ───────── */
 router.get('/enquiries', (req, res) => {
-  const rows = db.prepare('SELECT * FROM enquiries ORDER BY id DESC').all();
-  const body = rows.length ? rows.map((e) => `<article class="card ${e.is_read ? '' : 'unread'}"><h2>${esc(e.name)} ${e.is_read ? '' : '<span class="tag pending">new</span>'}</h2><p class="muted">${fmt(e.created)}${e.phone ? ` · <a href="tel:${esc(e.phone)}">${esc(e.phone)}</a>` : ''}${e.email ? ` · <a href="mailto:${esc(e.email)}">${esc(e.email)}</a>` : ''}</p><p class="detail">${esc(e.message)}</p>
-<div class="row"><form method="post" action="/admin/enquiries/${e.id}/read">${csrf(req)}<button class="btn small">${e.is_read ? 'Mark unread' : 'Mark read'}</button></form><form method="post" action="/admin/enquiries/${e.id}/delete" data-confirm="Delete this enquiry?">${csrf(req)}<button class="link-danger">Delete</button></form></div></article>`).join('') : '<p class="muted">No enquiries yet.</p>';
+  const term = String(req.query.q || '').trim().slice(0, 60), unread = req.query.show === 'unread';
+  const where = [], args = [];
+  if (unread) where.push('is_read=0');
+  if (term) { where.push("(name LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' OR message LIKE ? ESCAPE '\\')"); const l = likeEsc(term); args.push(l, l, l, l); }
+  const rows = db.prepare(`SELECT * FROM enquiries ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY id DESC LIMIT 200`).all(...args);
+  const all = db.prepare('SELECT COUNT(*) c FROM enquiries').get().c, un = counts().e;
+  const card = (e) => { const d = waDigits(e.phone); const msg = `Hello ${first(e.name)}, this is Akin Photography. Thank you for your message. `;
+    return `<article class="card enq ${e.is_read ? '' : 'unread'}"><header><h2>${esc(e.name)} ${e.is_read ? '' : '<span class="tag pending">new</span>'}</h2><span class="muted">${fmt(e.created)}</span></header>
+<p class="detail">${esc(e.message)}</p>
+<div class="row">${d ? `<a class="btn small ghost" href="https://wa.me/${d}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Reply on WhatsApp</a>` : ''}${e.phone ? `<a class="btn small ghost" href="tel:${esc(e.phone)}">Call ${esc(e.phone)}</a>` : ''}${e.email ? `<a class="btn small ghost" href="mailto:${esc(e.email)}?subject=${encodeURIComponent('Your message to Akin Photography')}">Email ${esc(e.email)}</a>` : ''}
+<form method="post" action="/admin/enquiries/${e.id}/read">${csrf(req)}<button class="btn small">${e.is_read ? 'Mark unread' : 'Mark read'}</button></form><form method="post" action="/admin/enquiries/${e.id}/delete" data-confirm="Delete this enquiry?">${csrf(req)}<button class="link-danger">Delete</button></form></div></article>`; };
+  const body = `<form class="search" method="get" action="/admin/enquiries" role="search">${unread ? '<input type="hidden" name="show" value="unread">' : ''}<input type="search" name="q" value="${esc(term)}" placeholder="Search enquiries" aria-label="Search enquiries"><button class="btn">Search</button></form>
+<p class="tabs"><a href="/admin/enquiries${term ? '?q=' + encodeURIComponent(term) : ''}" ${unread ? '' : 'aria-current="true"'}>All <small>${all}</small></a><a href="/admin/enquiries?show=unread${term ? '&q=' + encodeURIComponent(term) : ''}" ${unread ? 'aria-current="true"' : ''}>Unread <small>${un}</small></a></p>
+${rows.length ? rows.map(card).join('') : '<p class="muted">Nothing here.</p>'}`;
   res.type('html').send(shell(req, 'Enquiries', body, 'enquiries'));
 });
 router.post('/enquiries/:id/read', form, needCsrf, (req, res) => { db.prepare('UPDATE enquiries SET is_read = 1 - is_read WHERE id=?').run(Number(req.params.id)); back(res, '/admin/enquiries', 'Updated'); });
@@ -115,17 +188,32 @@ router.post('/enquiries/:id/delete', form, needCsrf, (req, res) => { db.prepare(
 
 /* ───────── gallery ───────── */
 const catOpts = (sel) => CATEGORIES.map((c) => `<option value="${c}" ${c === sel ? 'selected' : ''}>${c[0].toUpperCase() + c.slice(1)}</option>`).join('');
+function removeImage(id) {
+  const S = settings();
+  db.prepare('DELETE FROM images WHERE id=?').run(id); db.prepare('UPDATE services SET image_id=NULL WHERE image_id=?').run(id); images.removeFiles(id);
+  const clear = {}; for (const k of ['hero_image', 'about_image', 'cta_image']) if (String(S[k]) === String(id)) clear[k] = '';
+  if (Object.keys(clear).length) setSettings(clear);
+}
+const idList = (v) => [...new Set([].concat(v || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 500);
 router.get('/gallery', (req, res) => {
-  const S = settings(), imgs = q.images();
-  const body = `<section class="card"><h2>Upload photographs</h2><p class="muted">JPG, PNG or WebP, up to 15 MB each, up to 20 at a time. They are resized automatically for fast loading.</p>
+  const S = settings(), imgs = q.images(), svcs = q.services(true);
+  const roles = (id) => [String(S.hero_image) === String(id) && 'Home hero', String(S.about_image) === String(id) && 'About page', String(S.cta_image) === String(id) && 'Banner', ...svcs.filter((s) => s.image_id === id).map((s) => s.name)].filter(Boolean);
+  const card = (i) => `<article class="ph" draggable="true" data-id="${i.id}">
+<label class="sel"><input type="checkbox" class="pick" name="ids" value="${i.id}" form="bulk" aria-label="Select photograph ${i.id}"></label>
+<img src="/media/${i.id}-480.webp" alt="${esc(i.title)}" loading="lazy" width="${i.w}" height="${i.h}" draggable="false">
+<div class="badges">${roles(i.id).map((r) => `<span>${esc(r)}</span>`).join('')}${i.featured ? '<span class="home">On home page</span>' : ''}</div>
+<div class="ph-meta"><span>${esc(i.category)}</span><span class="moves"><button type="button" class="mv" data-d="-1" aria-label="Move earlier">←</button><button type="button" class="mv" data-d="1" aria-label="Move later">→</button></span></div>
+<details><summary>Edit</summary>
+<form method="post" action="/admin/gallery/${i.id}">${csrf(req)}<label>Category<select name="category">${catOpts(i.category)}</select></label><label>Caption (describe the photo)<input name="title" maxlength="140" value="${esc(i.title)}"></label><label class="check"><input type="checkbox" name="featured" ${i.featured ? 'checked' : ''}> Show on home page</label><button class="btn small">Save</button></form>
+<form method="post" action="/admin/gallery/${i.id}/use">${csrf(req)}<label>Use this photo as<select name="as"><option value="hero_image">Home page hero</option><option value="about_image">About page photo</option><option value="cta_image">Home page banner</option>${svcs.map((s) => `<option value="svc:${s.id}">Service: ${esc(s.name)}</option>`).join('')}</select></label><button class="btn small ghost">Use here</button></form>
+<form method="post" action="/admin/gallery/${i.id}/delete" data-confirm="Delete this photograph for good?">${csrf(req)}<button class="link-danger">Delete photo</button></form></details></article>`;
+  const body = `<section class="card"><h2>Add photographs</h2>
 <form class="upload" method="post" action="/admin/gallery/upload" enctype="multipart/form-data"><input type="hidden" name="_csrf" value="${req.session.csrf}">
-<label>Category<select name="category">${catOpts('portraits')}</select></label><label class="grow">Photographs<input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple required></label><button class="btn">Upload</button></form></section>
-${imgs.length ? `<div class="grid">${imgs.map((i) => `<article class="card photo"><img src="/media/${i.id}-480.webp" alt="" loading="lazy" width="${i.w}" height="${i.h}">
-<form method="post" action="/admin/gallery/${i.id}">${csrf(req)}<label>Category<select name="category">${catOpts(i.category)}</select></label><label>Caption<input name="title" maxlength="140" value="${esc(i.title)}"></label>
-<div class="two"><label>Order<input type="number" name="sort" value="${i.sort}" min="-999" max="999"></label><label class="check"><input type="checkbox" name="featured" ${i.featured ? 'checked' : ''}> Show on home page</label></div><button class="btn small">Save</button></form>
-<div class="row"><form method="post" action="/admin/gallery/${i.id}/use">${csrf(req)}<input type="hidden" name="as" value="hero_image"><button class="btn small ${String(S.hero_image) === String(i.id) ? 'on' : 'ghost'}">${String(S.hero_image) === String(i.id) ? '✓ Home hero' : 'Use as home hero'}</button></form>
-<form method="post" action="/admin/gallery/${i.id}/use">${csrf(req)}<input type="hidden" name="as" value="about_image"><button class="btn small ${String(S.about_image) === String(i.id) ? 'on' : 'ghost'}">${String(S.about_image) === String(i.id) ? '✓ About photo' : 'Use on About'}</button></form></div>
-<form method="post" action="/admin/gallery/${i.id}/delete" data-confirm="Delete this photograph for good?">${csrf(req)}<button class="link-danger">Delete</button></form></article>`).join('')}</div>` : '<p class="muted">No photographs yet. The public gallery is showing sample tiles until you upload.</p>'}`;
+<label>Category<select name="category">${catOpts('portraits')}</select></label><label class="grow">Photographs (JPG, PNG or WebP, up to 20 at a time)<input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple required></label><button class="btn">Upload</button></form></section>
+${imgs.length ? `<p class="muted tip">Drag photos to reorder them (or use the arrows on a phone). Tick photos to change several at once. Open <b>Edit</b> to set a caption or choose where a photo is used.</p>
+<div class="grid ph-grid" id="ph-grid">${imgs.map(card).join('')}</div>
+<form id="bulk" class="bulkbar" method="post" action="/admin/gallery/bulk" hidden>${csrf(req)}<b><span id="bulk-n">0</span> selected</b><button type="button" class="btn small ghost" id="sel-all">Select all</button><button type="button" class="btn small ghost" id="sel-none">Clear</button>
+<select name="category" aria-label="Category">${catOpts('')}</select><button class="btn small" name="action" value="category">Move to category</button><button class="btn small ghost" name="action" value="feature">Show on home</button><button class="btn small ghost" name="action" value="unfeature">Hide from home</button><button class="btn small danger" name="action" value="delete" data-confirm-btn="Delete the selected photographs for good?">Delete</button></form>` : '<p class="muted">No photographs yet. The public gallery shows sample tiles until you upload.</p>'}`;
   res.type('html').send(shell(req, 'Gallery', body, 'gallery'));
 });
 router.post('/gallery/upload', upload.array('photos', 20), needCsrf, async (req, res) => {
@@ -139,23 +227,39 @@ router.post('/gallery/upload', upload.array('photos', 20), needCsrf, async (req,
   }
   back(res, '/admin/gallery', bad ? '' : `${ok} photograph${ok === 1 ? '' : 's'} uploaded`, bad ? `${ok} uploaded, ${bad} could not be read. Use JPG, PNG or WebP.` : '');
 });
+router.post('/gallery/bulk', form, needCsrf, (req, res) => {
+  const ids = idList(req.body.ids), act = String(req.body.action || '');
+  if (!ids.length) return back(res, '/admin/gallery', '', 'Tick at least one photograph first.');
+  db.transaction(() => {
+    for (const id of ids) {
+      if (act === 'delete') removeImage(id);
+      else if (act === 'category' && CATEGORIES.includes(req.body.category)) db.prepare('UPDATE images SET category=? WHERE id=?').run(req.body.category, id);
+      else if (act === 'feature' || act === 'unfeature') db.prepare('UPDATE images SET featured=? WHERE id=?').run(act === 'feature' ? 1 : 0, id);
+    }
+  })();
+  const msg = { delete: 'deleted', category: 'moved', feature: 'now on the home page', unfeature: 'removed from the home page' }[act];
+  if (!msg) return back(res, '/admin/gallery', '', 'Choose what to do with the selected photographs.');
+  back(res, '/admin/gallery', `${ids.length} photograph${ids.length === 1 ? '' : 's'} ${msg}`);
+});
+router.post('/gallery/reorder', express.json({ limit: '30kb' }), needCsrf, (req, res) => {
+  const ids = idList(req.body && req.body.ids);
+  db.transaction(() => ids.forEach((id, i) => db.prepare('UPDATE images SET sort=? WHERE id=?').run(i + 1, id)))();
+  res.status(204).end();
+});
 router.post('/gallery/:id', form, needCsrf, (req, res) => {
   const b = req.body, cat = CATEGORIES.includes(b.category) ? b.category : 'other';
-  db.prepare('UPDATE images SET category=?,title=?,sort=?,featured=? WHERE id=?').run(cat, String(b.title || '').slice(0, 140), Math.max(-999, Math.min(999, parseInt(b.sort, 10) || 0)), b.featured ? 1 : 0, Number(req.params.id));
+  db.prepare('UPDATE images SET category=?,title=?,featured=? WHERE id=?').run(cat, String(b.title || '').slice(0, 140), b.featured ? 1 : 0, Number(req.params.id));
   back(res, '/admin/gallery', 'Photograph saved');
 });
 router.post('/gallery/:id/use', form, needCsrf, (req, res) => {
-  const k = ['hero_image', 'about_image'].includes(req.body.as) ? req.body.as : null;
-  if (k) { const cur = String(settings()[k]); setSettings({ [k]: cur === String(req.params.id) ? '' : String(Number(req.params.id)) }); }
-  back(res, '/admin/gallery', 'Updated');
+  const id = Number(req.params.id), as = String(req.body.as || '');
+  if (!q.image(id)) return back(res, '/admin/gallery', '', 'That photograph no longer exists.');
+  if (['hero_image', 'about_image', 'cta_image'].includes(as)) setSettings({ [as]: String(id) });
+  else if (/^svc:\d+$/.test(as)) db.prepare('UPDATE services SET image_id=? WHERE id=?').run(id, Number(as.slice(4)));
+  else return back(res, '/admin/gallery', '', 'Choose where to use the photograph.');
+  back(res, '/admin/gallery', 'Photograph placed on the website');
 });
-router.post('/gallery/:id/delete', form, needCsrf, (req, res) => {
-  const id = Number(req.params.id), S = settings();
-  db.prepare('DELETE FROM images WHERE id=?').run(id); db.prepare('UPDATE services SET image_id=NULL WHERE image_id=?').run(id); images.removeFiles(id);
-  const clear = {}; for (const k of ['hero_image', 'about_image']) if (String(S[k]) === String(id)) clear[k] = '';
-  if (Object.keys(clear).length) setSettings(clear);
-  back(res, '/admin/gallery', 'Photograph deleted');
-});
+router.post('/gallery/:id/delete', form, needCsrf, (req, res) => { removeImage(Number(req.params.id)); back(res, '/admin/gallery', 'Photograph deleted'); });
 
 /* ───────── services ───────── */
 const slugify = (s) => String(s).toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'service';
