@@ -30,7 +30,6 @@ app.use(cookieParser());
 /* ── static files: compressed-friendly, long cache for versioned assets and photographs ── */
 app.use('/css', express.static(path.join(__dirname, 'public/css'), { maxAge: '7d' }));
 app.use('/js', express.static(path.join(__dirname, 'public/js'), { maxAge: '7d' }));
-app.use('/img', express.static(path.join(__dirname, 'public/img'), { maxAge: '30d' }));
 app.get('/media/:file', (req, res) => {
   const f = req.params.file;
   if (!/^\d+-(480|960|1600|og)\.(webp|jpg)$/.test(f)) return res.sendStatus(404);
