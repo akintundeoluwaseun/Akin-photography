@@ -26,7 +26,9 @@
     var picks = function () { return [].slice.call(grid.querySelectorAll('.pick')); };
     var refresh = function () { var n = picks().filter(function (p) { return p.checked; }).length; nEl.textContent = n; bar.hidden = n === 0; };
     grid.addEventListener('change', function (e) { if (e.target.classList.contains('pick')) refresh(); });
-    doc.getElementById('sel-all').addEventListener('click', function () { picks().forEach(function (p) { p.checked = true; }); refresh(); });
+    var selAll = function () { picks().forEach(function (p) { p.checked = true; }); refresh(); };
+    doc.getElementById('sel-all').addEventListener('click', selAll);
+    doc.getElementById('sel-all-top').addEventListener('click', selAll);
     doc.getElementById('sel-none').addEventListener('click', function () { picks().forEach(function (p) { p.checked = false; }); refresh(); });
 
     var save = function () {
@@ -60,6 +62,36 @@
       }
     });
     grid.addEventListener('dragend', function () { if (drag) drag.classList.remove('drag'); grid.querySelectorAll('.over').forEach(function (o) { o.classList.remove('over'); }); drag = null; });
+  }
+
+
+  /* ── upload: shrink big phone photos in the browser and send one at a time (keeps each request small enough for the host) ── */
+  var upForm = doc.querySelector('form.upload');
+  if (upForm && window.fetch && window.FormData && window.createImageBitmap) {
+    var shrink = function (file) {
+      if (file.size < 1500000 && /jpeg|webp/.test(file.type)) return Promise.resolve(file);
+      return createImageBitmap(file).then(function (bm) {
+        var s = Math.min(1, 2200 / Math.max(bm.width, bm.height)), c = doc.createElement('canvas');
+        c.width = Math.round(bm.width * s); c.height = Math.round(bm.height * s);
+        c.getContext('2d').drawImage(bm, 0, 0, c.width, c.height);
+        return new Promise(function (res) { c.toBlob(function (b) { res(b || file); }, 'image/jpeg', 0.86); });
+      }).catch(function () { return file; });
+    };
+    upForm.addEventListener('submit', function (e) {
+      var input = upForm.querySelector('input[type=file]'), files = [].slice.call(input.files || []);
+      if (!files.length) return;
+      e.preventDefault();
+      var btn = upForm.querySelector('button'), cat = upForm.querySelector('select').value, ok = 0, bad = 0, i = 0;
+      btn.disabled = true;
+      (function next() {
+        if (i >= files.length) { toast(ok + ' uploaded' + (bad ? ', ' + bad + ' failed' : '')); setTimeout(function () { location.href = '/admin/gallery'; }, 700); return; }
+        btn.textContent = 'Uploading ' + (i + 1) + ' of ' + files.length + '…';
+        shrink(files[i]).then(function (blob) {
+          var fd = new FormData(); fd.append('_csrf', csrf || upForm.querySelector('[name=_csrf]').value); fd.append('category', cat); fd.append('photos', blob, 'photo.jpg');
+          return fetch('/admin/gallery/upload', { method: 'POST', body: fd, credentials: 'same-origin', redirect: 'manual' });
+        }).then(function (r) { if (r.type === 'opaqueredirect' || r.ok) ok++; else bad++; }).catch(function () { bad++; }).then(function () { i++; next(); });
+      })();
+    });
   }
 
   /* ── phone / computer alerts (Web Push, work even when the browser is closed) ── */

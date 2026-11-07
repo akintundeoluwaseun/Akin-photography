@@ -1,5 +1,6 @@
 {
   "version": 2,
   "functions": { "api/index.js": { "includeFiles": "{public,seed}/**", "maxDuration": 30 } },
+  "git": { "deploymentEnabled": { "data": false } },
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
 }

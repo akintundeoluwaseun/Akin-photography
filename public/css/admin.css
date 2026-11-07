@@ -72,3 +72,5 @@ details.bk{padding:14px 18px;margin-bottom:10px}details.bk.new{border-left:3px s
 .how{margin-top:12px}.how summary{cursor:pointer;color:var(--gold)}.how ol{margin:10px 0 0;padding-left:20px;color:#4b443a}.how li{margin:6px 0}.alerts.on{background:#1f3a2a;border-color:#2e7d4f}
 
 .btn[hidden],button[hidden]{display:none!important}
+
+.selrow{margin:0 0 10px}

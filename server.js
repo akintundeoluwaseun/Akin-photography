@@ -6,12 +6,12 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { db, settings, q, DATA_DIR } = require('./lib/db');
 const { CATEGORIES } = require('./lib/content');
-const { hashPassword } = require('./lib/security');
 const ui = require('./lib/ui');
 const { router: publicRouter, page } = require('./routes/public');
 const adminRouter = require('./routes/admin');
 const { t: T_ } = require('./lib/i18n');
 const images = require('./lib/images');
+const remote = require('./lib/remote');
 
 const app = express();
 let seeded = false; // first request waits for the starter photographs (matters on serverless cold starts)
@@ -32,11 +32,12 @@ app.use(cookieParser());
 /* ── static files: compressed-friendly, long cache for versioned assets and photographs ── */
 app.use('/css', express.static(path.join(__dirname, 'public/css'), { maxAge: '7d' }));
 app.use('/js', express.static(path.join(__dirname, 'public/js'), { maxAge: '7d' }));
-app.get('/media/:file', (req, res) => {
+app.get('/media/:file', async (req, res, next) => {
   const f = req.params.file;
   if (!/^\d+-(480|960|1600|og)\.(webp|jpg)$/.test(f)) return res.sendStatus(404);
-  const p = path.join(images.DIR, f);
-  if (!fs.existsSync(p)) return res.sendStatus(404);
+  let p = path.join(images.DIR, f);
+  try { if (!fs.existsSync(p)) p = remote.hasFile(f) ? await remote.fetchFile(f) : null; } catch (e) { return next(e); }
+  if (!p || !fs.existsSync(p)) return res.sendStatus(404);
   res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
   res.sendFile(p);
 });
@@ -67,6 +68,7 @@ app.get('/sitemap.xml', (req, res) => {
   res.type('application/xml').send(xml);
 });
 
+app.use(remote.middleware);
 app.use('/admin', adminRouter);
 app.use('/', publicRouter);
 
@@ -86,22 +88,15 @@ app.use((err, req, res, next) => { // eslint-disable-line
   page(req, res, { title: t('e500_title'), noindex: true, body: `<section class="err-page wrap"><p class="eyebrow dark">${err.status || 500}</p><h1>${t('e500_title')}</h1><p class="lead">${t('e500_text')}</p><a class="btn btn-dark" href="${L('/')}">${t('conf_home')}</a></section>` });
 });
 
-/* ── first run: create the owner's admin account ── */
+/* ── first run: create the owner's admin account from lib/admin-account.js ── */
 function ensureAdmin() {
   if (db.prepare('SELECT COUNT(*) c FROM admins').get().c) return;
-  const email = (process.env.ADMIN_EMAIL || 'admin@akinphotography.local').toLowerCase();
-  const generated = !process.env.ADMIN_PASSWORD;
-  const pw = process.env.ADMIN_PASSWORD || crypto.randomBytes(9).toString('base64url');
-  db.prepare('INSERT INTO admins(email,hash) VALUES (?,?)').run(email, hashPassword(pw));
-  console.log('\n──────────────────────────────────────────────\n Admin account created\n   Email:    ' + email);
-  if (generated) {
-    console.log(`   Password: ${pw}   (change it in Admin → Account)`);
-    fs.writeFileSync(path.join(DATA_DIR, 'FIRST_RUN_ADMIN.txt'), `Email: ${email}\nPassword: ${pw}\n\nChange this password in Admin → Account, then delete this file.\n`, { mode: 0o600 });
-  } else console.log('   Password: (from ADMIN_PASSWORD)');
-  console.log('──────────────────────────────────────────────\n');
+  const { PHONE, PASSWORD_HASH } = require('./lib/admin-account');
+  db.prepare('INSERT INTO admins(email,hash) VALUES (?,?)').run(ui.digits(PHONE), PASSWORD_HASH);
+  console.log('Admin account created. Sign in with the phone number set in lib/admin-account.js');
 }
 ensureAdmin();
-const ready = require('./lib/seed').seedPhotos().catch((e) => console.error(e));
+const ready = require('./lib/seed').seedPhotos().then(() => { if (remote.enabled && !remote.state.head) return remote.persist(); }).catch((e) => console.error(e));
 
 const PORT = Number(process.env.PORT) || 3000;
 if (require.main === module) ready.then(() => app.listen(PORT, () => console.log(`Akin Photography running on http://localhost:${PORT}`)));

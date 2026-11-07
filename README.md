@@ -18,7 +18,7 @@ cp .env.example .env      # then edit
 npm start                 # http://localhost:3000
 ```
 
-On first start an admin account is created. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD`, or read the generated password from `data/FIRST_RUN_ADMIN.txt`, sign in at `/admin`, then change it under **Account**.
+Sign in at `/admin` with the phone number **07030129673** and the password you were given. The sign-in is defined in the code (`lib/admin-account.js`, a phone number and a password hash). Change either under **Settings → Account**.
 
 ## Deploy
 
@@ -26,7 +26,7 @@ This is a Node server with a SQLite database and uploaded files, so it needs a h
 
 1. Create a web service from this repo: build `npm install`, start `npm start`.
 2. Attach a persistent disk and set `DATA_DIR` to its path.
-3. Set `NODE_ENV=production`, `SITE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`.
+3. Set `NODE_ENV=production` and `SITE_URL`.
 4. Sign in at `/admin` and fill in: **Contact details** (phone, WhatsApp, email), **Opening hours**, **Social media**, upload photographs in **Gallery**, set prices in **Services & prices**.
 
 Back up the `DATA_DIR` folder regularly: it holds every booking and photograph.
@@ -52,3 +52,14 @@ Keys are created automatically and stored in the database; you can fix them with
 ## Credit link
 
 The footer shows "Website by Oluwaseun", linking to the developer's portfolio. Change the address with `CREDIT_URL`.
+
+
+## Deploying on Vercel (changes are kept in your GitHub repo)
+
+Vercel's disk is read-only, so the site saves its database and photos to a separate **`data`** branch of your GitHub repo. No other service or database is needed. That branch is never deployed.
+
+1. GitHub → Settings → Developer settings → Fine-grained tokens → generate one for this repository only, with **Contents: Read and write**.
+2. In Vercel → Project → Settings → Environment Variables, add `GITHUB_TOKEN` with that value, then redeploy.
+3. Sign in at `/admin`. Edits, bookings, uploads and deletions are saved to the `data` branch (the database is encrypted; photos are stored as files). Deleted photos stay deleted and the starter photos do not come back.
+
+Notes: each save adds about one to two seconds. If two people save at the same moment, the later save wins. Keep the repo **private**, since the branch holds your bookings (encrypted) and photos. Photos are resized in the browser before upload so they fit Vercel's 4.5 MB request limit.

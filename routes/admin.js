@@ -9,6 +9,7 @@ const images = require('../lib/images');
 const { esc } = require('../lib/ui');
 const { STARTER_TITLES } = require('../lib/seed');
 const push = require('../lib/push');
+const remote = require('../lib/remote');
 const sharp = require('sharp');
 
 const router = express.Router();
@@ -31,7 +32,9 @@ const pill = (key, n) => `<span class="pill" data-pill="${key}" ${n ? '' : 'hidd
 function counts() { return { b: db.prepare("SELECT COUNT(*) c FROM bookings WHERE status='pending'").get().c, e: db.prepare('SELECT COUNT(*) c FROM enquiries WHERE is_read=0').get().c }; }
 function shell(req, title, body, active) {
   const s = req.session, c = counts();
-  const demo = process.env.VERCEL && !process.env.DATA_DIR ? '<p class="flash bad" role="alert"><b>Preview mode.</b> This host only has temporary storage, so bookings, messages and uploaded photographs can disappear at any time. Move the site to a host with a permanent disk before using it for real customers. Set ADMIN_EMAIL and ADMIN_PASSWORD in the host settings so you can always sign in.</p>' : '';
+  const warn = (t) => `<p class="flash bad" role="alert">${t}</p>`;
+  const demo = process.env.VERCEL && !remote.enabled ? warn('<b>Changes are not being kept.</b> This site cannot save to its host. Add <b>GITHUB_TOKEN</b> in the host settings (see the README) so every change, photo and booking is saved to your GitHub repository.')
+    : remote.enabled && remote.state.lastError ? warn('<b>Could not save to GitHub:</b> ' + esc(remote.state.lastError.slice(0, 200)) + '<br>Your last change is on this page for now but is not safely stored yet. Check the GITHUB_TOKEN permissions (Contents: read and write) and try again.') : '';
   const flash = demo + (req.query.ok ? `<p class="flash ok" role="status">${esc(String(req.query.ok).slice(0, 120))}</p>` : req.query.err ? `<p class="flash bad" role="alert">${esc(String(req.query.err).slice(0, 160))}</p>` : '');
   const group = GROUPS.find((g) => g.items.some(([p]) => p === active)) || GROUPS[0];
   const sub = group.items.length > 1 ? `<nav class="subtabs" aria-label="${esc(group.label)}">${group.items.map(([p, l]) => `<a href="/admin/${p}" ${p === active ? 'aria-current="page"' : ''}>${l}${p === 'bookings' ? pill('b', c.b) : ''}${p === 'enquiries' ? pill('e', c.e) : ''}</a>`).join('')}</nav>` : '';
@@ -50,15 +53,16 @@ const fmt = (ms) => new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', time
 function loginPage(res, msg, email = '') {
   res.status(msg ? 401 : 200).type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Sign in · Akin Photography</title><link rel="stylesheet" href="/css/admin.css?v=1"></head>
 <body class="login"><form class="login-box" method="post" action="/admin/login"><p class="logo"><b>AKIN</b> PHOTOGRAPHY</p><h1>Sign in</h1>${msg ? `<p class="flash bad" role="alert">${esc(msg)}</p>` : ''}
-<label>Email<input name="email" type="email" autocomplete="username" required value="${esc(email)}"></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button class="btn">Sign in</button></form></body></html>`);
+<label>Phone number<input name="phone" type="tel" inputmode="tel" autocomplete="username" required placeholder="e.g. 0803 000 0000" value="${esc(email)}"></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button class="btn">Sign in</button></form></body></html>`);
 }
 router.get('/login', (req, res) => { if (sec.getSession(req.cookies[COOKIE])) return res.redirect('/admin'); loginPage(res); });
 router.post('/login', form, (req, res) => {
   if (sec.limited('login:' + (req.ip || 'x'), 8, 15 * 60e3)) return loginPage(res.status(429), 'Too many attempts. Please wait 15 minutes.');
-  const email = String(req.body.email || '').trim().toLowerCase(), pw = String(req.body.password || '');
-  const a = db.prepare('SELECT * FROM admins WHERE email=?').get(email);
+  const typed = String(req.body.phone || req.body.email || '').trim(), pw = String(req.body.password || '');
+  const email = typed.includes('@') ? typed.toLowerCase() : require('../lib/ui').digits(typed);
+  const a = email ? db.prepare('SELECT * FROM admins WHERE email=?').get(email) : null;
   const ok = sec.verifyPassword(pw, a ? a.hash : 's1$00$00') && !!a;
-  if (!ok) return loginPage(res, 'Incorrect email or password.', email);
+  if (!ok) return loginPage(res, 'Incorrect phone number or password.', typed);
   const token = sec.createSession(a.id);
   res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure, maxAge: 12 * 3600e3, path: '/admin' });
   res.redirect(303, '/admin');
@@ -131,6 +135,7 @@ router.get('/', (req, res) => {
 <section class="card"><h2>Coming up</h2>${rows(upcoming, 'No confirmed sessions yet.')}</section></div>
 <section class="card" id="push-card"><h2>Alerts on this device</h2><p class="muted" id="push-msg">Checking…</p><div class="row"><button type="button" class="btn small" id="push-on" hidden>Turn on alerts</button><button type="button" class="btn small ghost" id="push-test" hidden>Send a test alert</button></div>
 <details class="how"><summary>How to get alerts when the app is closed</summary><ol><li><b>Android:</b> open this admin in Chrome, tap the ⋮ menu, choose <i>Install app</i> (or <i>Add to Home screen</i>), open it, then tap <i>Turn on alerts</i>.</li><li><b>iPhone:</b> open this admin in Safari, tap Share, choose <i>Add to Home Screen</i>, open it from your home screen, then tap <i>Turn on alerts</i>.</li><li><b>Computer:</b> tap <i>Turn on alerts</i>. They arrive while the browser is running in the background.</li><li>Alerts need the site to be on a secure (https) address, which every normal host provides. Do each step once on each device you want alerts on.</li></ol></details></section>
+${remote.enabled ? `<p class="muted">✓ Everything you change here is saved to your GitHub repository (branch “${esc(remote.BRANCH)}”)${remote.state.lastSaved ? ', last saved ' + fmt(remote.state.lastSaved) : ''}.</p>` : ''}
 <section class="card"><h2>Setting up <span class="muted">${done} of ${list.length} done</span></h2><div class="bar"><i style="width:${Math.round((done / list.length) * 100)}%"></i></div><ul class="checks">${list.map(([ok, t, p]) => `<li class="${ok ? 'ok' : ''}"><span aria-hidden="true">${ok ? '✓' : '○'}</span>${ok ? `<span>${esc(t)}</span>` : `<a href="/admin/${p}">${esc(t)}</a>`}</li>`).join('')}</ul></section>`;
   res.type('html').send(shell(req, 'Overview', body, ''));
 });
@@ -245,6 +250,7 @@ router.get('/gallery', (req, res) => {
 <form class="upload" method="post" action="/admin/gallery/upload" enctype="multipart/form-data"><input type="hidden" name="_csrf" value="${req.session.csrf}">
 <label>Category<select name="category">${catOpts('portraits')}</select></label><label class="grow">Photographs (JPG, PNG or WebP, up to 20 at a time)<input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple required></label><button class="btn">Upload</button></form></section>
 ${imgs.length ? `<p class="muted tip">Drag photos to reorder them (or use the arrows on a phone). Tick photos to change several at once. Open <b>Edit</b> to set a caption or choose where a photo is used.</p>
+<p class="selrow"><button type="button" class="btn small ghost" id="sel-all-top">Select all photos</button></p>
 <div class="grid ph-grid" id="ph-grid">${imgs.map(card).join('')}</div>
 <form id="bulk" class="bulkbar" method="post" action="/admin/gallery/bulk" hidden>${csrf(req)}<b><span id="bulk-n">0</span> selected</b><button type="button" class="btn small ghost" id="sel-all">Select all</button><button type="button" class="btn small ghost" id="sel-none">Clear</button>
 <select name="category" aria-label="Category">${catOpts('')}</select><button class="btn small" name="action" value="category">Move to category</button><button class="btn small ghost" name="action" value="feature">Show on home</button><button class="btn small ghost" name="action" value="unfeature">Hide from home</button><button class="btn small danger" name="action" value="delete" data-confirm-btn="Delete the selected photographs for good?">Delete</button></form>` : '<p class="muted">No photographs yet. The public gallery shows sample tiles until you upload.</p>'}`;
@@ -404,16 +410,16 @@ router.post('/hours', form, needCsrf, (req, res) => { setSettings({ hours: JSON.
 
 /* ───────── account ───────── */
 router.get('/account', (req, res) => {
-  const body = `<form class="card settings" method="post" action="/admin/account">${csrf(req)}<p class="muted">Signed in as <b>${esc(req.session.email)}</b></p>
-<label>Email address<input name="email" type="email" required value="${esc(req.session.email)}"></label><label>Current password<input name="current" type="password" autocomplete="current-password" required></label>
+  const body = `<form class="card settings" method="post" action="/admin/account">${csrf(req)}<p class="muted">You sign in with your phone number and password.</p>
+<label>Phone number (used to sign in)<input name="phone" type="tel" inputmode="tel" required value="${esc(req.session.email)}"></label><label>Current password<input name="current" type="password" autocomplete="current-password" required></label>
 <label>New password (leave empty to keep the current one)<input name="password" type="password" autocomplete="new-password" minlength="10"></label><p class="help">At least 10 characters.</p><button class="btn">Save</button></form>`;
   res.type('html').send(shell(req, 'Account', body, 'account'));
 });
 router.post('/account', form, needCsrf, (req, res) => {
   const a = db.prepare('SELECT * FROM admins WHERE id=?').get(req.session.admin_id);
   if (!sec.verifyPassword(String(req.body.current || ''), a.hash)) return back(res, '/admin/account', '', 'The current password is not correct.');
-  const email = String(req.body.email || '').trim().toLowerCase(), pw = String(req.body.password || '');
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return back(res, '/admin/account', '', 'That email address does not look right.');
+  const email = require('../lib/ui').digits(String(req.body.phone || '').trim()), pw = String(req.body.password || '');
+  if (!email) return back(res, '/admin/account', '', 'That phone number does not look right.');
   if (pw && pw.length < 10) return back(res, '/admin/account', '', 'The new password needs at least 10 characters.');
   db.prepare('UPDATE admins SET email=?' + (pw ? ', hash=?' : '') + ' WHERE id=?').run(...(pw ? [email, sec.hashPassword(pw), a.id] : [email, a.id]));
   if (pw) db.prepare('DELETE FROM sessions WHERE admin_id=? AND token!=?').run(a.id, crypto.createHash('sha256').update(req.cookies[COOKIE]).digest('hex'));
