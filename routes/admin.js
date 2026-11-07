@@ -53,7 +53,7 @@ const fmt = (ms) => new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', time
 function loginPage(res, msg, email = '') {
   res.status(msg ? 401 : 200).type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Sign in · Akin Photography</title><link rel="stylesheet" href="/css/admin.css?v=1"></head>
 <body class="login"><form class="login-box" method="post" action="/admin/login"><p class="logo"><b>AKIN</b> PHOTOGRAPHY</p><h1>Sign in</h1>${msg ? `<p class="flash bad" role="alert">${esc(msg)}</p>` : ''}
-<label>Phone number<input name="phone" type="tel" inputmode="tel" autocomplete="username" required placeholder="e.g. 0803 000 0000" value="${esc(email)}"></label><button class="btn">Sign in</button></form></body></html>`);
+<label>Enter your password<input name="phone" type="password" inputmode="tel" autocomplete="current-password" required autofocus></label><button class="btn">Sign in</button></form></body></html>`);
 }
 router.get('/login', (req, res) => { if (sec.getSession(req.cookies[COOKIE])) return res.redirect('/admin'); loginPage(res); });
 router.post('/login', form, (req, res) => {
@@ -62,7 +62,7 @@ router.post('/login', form, (req, res) => {
   const email = typed.includes('@') ? typed.toLowerCase() : require('../lib/ui').digits(typed);
   const a = email ? db.prepare('SELECT * FROM admins WHERE email=?').get(email) : null;
   const ok = !!a; /* the phone number alone signs in */
-  if (!ok) return loginPage(res, 'That phone number is not registered for this admin.', typed);
+  if (!ok) return loginPage(res, 'That password is not correct.', typed);
   const token = sec.createSession(a.id);
   res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure, maxAge: 12 * 3600e3, path: '/admin' });
   res.redirect(303, '/admin');
