@@ -31,7 +31,8 @@ const pill = (key, n) => `<span class="pill" data-pill="${key}" ${n ? '' : 'hidd
 function counts() { return { b: db.prepare("SELECT COUNT(*) c FROM bookings WHERE status='pending'").get().c, e: db.prepare('SELECT COUNT(*) c FROM enquiries WHERE is_read=0').get().c }; }
 function shell(req, title, body, active) {
   const s = req.session, c = counts();
-  const flash = req.query.ok ? `<p class="flash ok" role="status">${esc(String(req.query.ok).slice(0, 120))}</p>` : req.query.err ? `<p class="flash bad" role="alert">${esc(String(req.query.err).slice(0, 160))}</p>` : '';
+  const demo = process.env.VERCEL && !process.env.DATA_DIR ? '<p class="flash bad" role="alert"><b>Preview mode.</b> This host only has temporary storage, so bookings, messages and uploaded photographs can disappear at any time. Move the site to a host with a permanent disk before using it for real customers. Set ADMIN_EMAIL and ADMIN_PASSWORD in the host settings so you can always sign in.</p>' : '';
+  const flash = demo + (req.query.ok ? `<p class="flash ok" role="status">${esc(String(req.query.ok).slice(0, 120))}</p>` : req.query.err ? `<p class="flash bad" role="alert">${esc(String(req.query.err).slice(0, 160))}</p>` : '');
   const group = GROUPS.find((g) => g.items.some(([p]) => p === active)) || GROUPS[0];
   const sub = group.items.length > 1 ? `<nav class="subtabs" aria-label="${esc(group.label)}">${group.items.map(([p, l]) => `<a href="/admin/${p}" ${p === active ? 'aria-current="page"' : ''}>${l}${p === 'bookings' ? pill('b', c.b) : ''}${p === 'enquiries' ? pill('e', c.e) : ''}</a>`).join('')}</nav>` : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="csrf" content="${s.csrf}">

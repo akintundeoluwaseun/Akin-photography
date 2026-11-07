@@ -14,9 +14,11 @@ const { t: T_ } = require('./lib/i18n');
 const images = require('./lib/images');
 
 const app = express();
+let seeded = false; // first request waits for the starter photographs (matters on serverless cold starts)
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
+app.use((req, res, next) => (seeded ? next() : ready.then(() => { seeded = true; next(); })));
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');

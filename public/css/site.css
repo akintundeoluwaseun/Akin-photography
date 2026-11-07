@@ -148,7 +148,10 @@ textarea{resize:vertical;min-height:130px}
 .site-footer p{font-size:.95rem;max-width:34ch;margin:18px 0}.brand-foot{display:inline-flex}.foot-contact a{display:inline-flex;align-items:center;gap:7px}
 .socials{display:flex;gap:10px;margin-top:18px}.socials a{width:40px;height:40px;border:1px solid rgba(255,255,255,.25);border-radius:50%;display:grid;place-items:center;opacity:1;transition:background .2s,border-color .2s}.socials a:hover{background:var(--gold);border-color:var(--gold);color:#fff}.socials.dark a{border-color:var(--line);color:var(--ink)}.socials.dark a:hover{color:#fff}
 .copy{max-width:var(--max)!important;margin:50px auto 0!important;padding-top:22px;border-top:1px solid rgba(255,255,255,.1);font-size:.82rem!important;color:#8f887c}
-.wa-float{position:fixed;right:18px;bottom:18px;z-index:90;width:58px;height:58px;border-radius:50%;background:var(--wa);color:#fff;display:grid;place-items:center;box-shadow:0 8px 28px rgba(0,0,0,.3);transition:transform .25s var(--ease)}.wa-float:hover{transform:scale(1.08)}.wa-float .ic{width:30px;height:30px}
+.wa-float{position:fixed;right:18px;bottom:18px;z-index:90;height:56px;min-width:56px;padding:0 15px;border-radius:999px;background:var(--ink);color:var(--gold);border:1px solid rgba(176,141,87,.6);display:flex;align-items:center;justify-content:center;text-decoration:none;box-shadow:0 8px 28px rgba(0,0,0,.28);transition:background .3s,color .3s,border-color .3s,transform .3s var(--ease)}
+.wa-float .ic{width:26px;height:26px}.wa-float span{max-width:0;overflow:hidden;white-space:nowrap;font:500 .72rem var(--sans);letter-spacing:.2em;text-transform:uppercase;transition:max-width .4s var(--ease),margin .4s var(--ease)}
+.wa-float:hover,.wa-float:focus-visible{background:var(--gold);color:#fff;border-color:var(--gold);transform:translateY(-2px)}.wa-float:hover span,.wa-float:focus-visible span{max-width:200px;margin-left:10px}
+@media(hover:none){.wa-float:hover span{max-width:0;margin:0}}
 
 /* scroll reveal: only hidden once JS is running */
 .reveal-ready .reveal:not(.in){opacity:0;transform:translateY(26px)}.reveal{transition:opacity .9s var(--ease),transform .9s var(--ease)}
