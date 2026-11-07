@@ -10,6 +10,7 @@ const ui = require('../lib/ui');
 const { esc, layout, tile, img, sampleImages, icon, waLink, telLink, money, baseUrl } = ui;
 const { limited, publicCsrf, checkPublicCsrf } = require('../lib/security');
 const images = require('../lib/images');
+const push = require('../lib/push');
 
 const router = express.Router();
 
@@ -227,8 +228,9 @@ router.post('/booking', express.urlencoded({ extended: false, limit: '20kb' }), 
   if (values.mode === 'mobile' && values.location.length < 3) errors.location = t('err_location');
   if (Object.keys(errors).length) return bookingForm(req, res.status(422), { values, errors, formError: t('err_fix') });
   const ref = 'AKN-' + crypto.randomBytes(5).toString('hex').toUpperCase().slice(0, 6);
-  db.prepare('INSERT INTO bookings(ref,service_id,service_name,name,phone,date,time,mode,location,details,created) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+  const bk = db.prepare('INSERT INTO bookings(ref,service_id,service_name,name,phone,date,time,mode,location,details,created) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
     .run(ref, svc.id, svc.name, values.name, values.phone, values.date, values.time, values.mode, values.mode === 'mobile' ? values.location : '', values.details, Date.now());
+  push.notify({ title: 'New booking request', body: `${values.name} · ${svc.name} · ${values.date} at ${values.time}`, url: '/admin/bookings?open=' + bk.lastInsertRowid, tag: 'bk-' + ref });
   res.redirect(303, L('/booking/received/' + ref));
 });
 
@@ -306,7 +308,8 @@ router.post('/contact', express.urlencoded({ extended: false, limit: '20kb' }), 
   if (!errors.email && !values.email && !validPhone(values.phone)) errors.phone = t('err_contact');
   if (values.phone && !validPhone(values.phone)) errors.phone = t('err_phone');
   if (Object.keys(errors).length) return contactPage(req, res.status(422), { values, errors, formError: t('err_fix') });
-  db.prepare('INSERT INTO enquiries(name,phone,email,message,created) VALUES (?,?,?,?,?)').run(values.name, values.phone, values.email, values.message, Date.now());
+  const eq = db.prepare('INSERT INTO enquiries(name,phone,email,message,created) VALUES (?,?,?,?,?)').run(values.name, values.phone, values.email, values.message, Date.now());
+  push.notify({ title: 'New message from ' + values.name, body: values.message.slice(0, 110), url: '/admin/enquiries', tag: 'eq-' + eq.lastInsertRowid });
   contactPage(req, res, { sent: values.name.split(' ')[0] });
 });
 

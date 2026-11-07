@@ -8,6 +8,8 @@ const sec = require('../lib/security');
 const images = require('../lib/images');
 const { esc } = require('../lib/ui');
 const { STARTER_TITLES } = require('../lib/seed');
+const push = require('../lib/push');
+const sharp = require('sharp');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 20 } });
@@ -33,11 +35,11 @@ function shell(req, title, body, active) {
   const group = GROUPS.find((g) => g.items.some(([p]) => p === active)) || GROUPS[0];
   const sub = group.items.length > 1 ? `<nav class="subtabs" aria-label="${esc(group.label)}">${group.items.map(([p, l]) => `<a href="/admin/${p}" ${p === active ? 'aria-current="page"' : ''}>${l}${p === 'bookings' ? pill('b', c.b) : ''}${p === 'enquiries' ? pill('e', c.e) : ''}</a>`).join('')}</nav>` : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="csrf" content="${s.csrf}">
-<title>${esc(title)} · Akin Photography admin</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/css/admin.css?v=2"></head><body data-total="${c.b + c.e}">
+<title>${esc(title)} · Akin Photography admin</title><link rel="icon" href="/favicon.svg"><link rel="manifest" href="/admin/manifest.webmanifest"><meta name="theme-color" content="#16130f"><link rel="apple-touch-icon" href="/admin/icon-192.png"><link rel="stylesheet" href="/css/admin.css?v=4"></head><body data-total="${c.b + c.e}">
 <aside class="side"><a class="logo" href="/admin"><b>AKIN</b> PHOTOGRAPHY<small>Admin</small></a>
 <nav class="main-nav" aria-label="Admin">${GROUPS.map((g) => `<a href="/admin/${g.items[0][0]}" ${g === group ? 'aria-current="page"' : ''}>${g.label}${g.id === 'inbox' ? pill('t', c.b + c.e) : ''}</a>`).join('')}</nav>
-<div class="side-foot"><button type="button" class="alerts" id="alerts" hidden>🔔 Turn on alerts</button><a href="/" target="_blank" rel="noopener">View website ↗</a><form method="post" action="/admin/logout"><input type="hidden" name="_csrf" value="${s.csrf}"><button>Sign out</button></form></div></aside>
-<main class="main">${sub}<h1>${esc(title)}</h1>${flash}${body}</main><script src="/js/admin.js?v=2" defer></script></body></html>`;
+<div class="side-foot"><button type="button" class="alerts" id="alerts" hidden>🔔 Turn on phone alerts</button><a href="/" target="_blank" rel="noopener">View website ↗</a><form method="post" action="/admin/logout"><input type="hidden" name="_csrf" value="${s.csrf}"><button>Sign out</button></form></div></aside>
+<main class="main">${sub}<h1>${esc(title)}</h1>${flash}${body}</main><script src="/js/admin.js?v=6" defer></script></body></html>`;
 }
 const csrf = (req) => `<input type="hidden" name="_csrf" value="${req.session.csrf}">`;
 const back = (res, to, ok, err) => res.redirect(303, `${to}${to.includes('?') ? '&' : '?'}${err ? 'err=' + encodeURIComponent(err) : 'ok=' + encodeURIComponent(ok || 'Saved')}`);
@@ -59,6 +61,31 @@ router.post('/login', form, (req, res) => {
   const token = sec.createSession(a.id);
   res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure, maxAge: 12 * 3600e3, path: '/admin' });
   res.redirect(303, '/admin');
+});
+
+/* installable admin app + push service worker: served before sign-in so the browser can always fetch them */
+const SW = `self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener('push', (e) => {
+  let d = {}; try { d = e.data.json(); } catch (_) { d = { title: 'Akin Photography', body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Akin Photography', { body: d.body || '', icon: '/admin/icon-192.png', badge: '/admin/icon-192.png', tag: d.tag || 'akin', renotify: true, data: { url: d.url || '/admin/bookings' } }));
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '/admin';
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    for (const c of list) if (c.url.indexOf('/admin') !== -1 && 'focus' in c) { if ('navigate' in c) c.navigate(url); return c.focus(); }
+    return self.clients.openWindow(url);
+  }));
+});`;
+router.get('/sw.js', (req, res) => { res.type('application/javascript').set({ 'Service-Worker-Allowed': '/admin/', 'Cache-Control': 'no-cache' }).send(SW); });
+router.get('/manifest.webmanifest', (req, res) => res.type('application/manifest+json').send(JSON.stringify({ name: 'Akin Photography Admin', short_name: 'Akin Admin', start_url: '/admin/', scope: '/admin/', display: 'standalone', background_color: '#16130f', theme_color: '#16130f', icons: [{ src: '/admin/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' }, { src: '/admin/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' }] })));
+const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#0d0c0b"/><circle cx="32" cy="32" r="14" fill="none" stroke="#b08d57" stroke-width="3"/><circle cx="32" cy="32" r="5" fill="#b08d57"/></svg>';
+const iconCache = {};
+router.get(/^\/icon-(192|512)\.png$/, async (req, res) => {
+  const n = Number(req.params[0]);
+  iconCache[n] = iconCache[n] || await sharp(Buffer.from(ICON_SVG), { density: 300 }).resize(n, n).png().toBuffer();
+  res.type('png').set('Cache-Control', 'public, max-age=86400').send(iconCache[n]);
 });
 
 /* everything below needs a signed-in administrator */
@@ -101,10 +128,16 @@ router.get('/', (req, res) => {
   const body = `<div class="stats">${stats.map(([l, v, p]) => `<a class="stat" href="/admin/${p}"><b>${v}</b><span>${l}</span></a>`).join('')}</div>
 <div class="cols"><section class="card"><h2>Waiting for a reply</h2>${rows(recent, 'No new booking requests.')}</section>
 <section class="card"><h2>Coming up</h2>${rows(upcoming, 'No confirmed sessions yet.')}</section></div>
+<section class="card" id="push-card"><h2>Alerts on this device</h2><p class="muted" id="push-msg">Checking…</p><div class="row"><button type="button" class="btn small" id="push-on" hidden>Turn on alerts</button><button type="button" class="btn small ghost" id="push-test" hidden>Send a test alert</button></div>
+<details class="how"><summary>How to get alerts when the app is closed</summary><ol><li><b>Android:</b> open this admin in Chrome, tap the ⋮ menu, choose <i>Install app</i> (or <i>Add to Home screen</i>), open it, then tap <i>Turn on alerts</i>.</li><li><b>iPhone:</b> open this admin in Safari, tap Share, choose <i>Add to Home Screen</i>, open it from your home screen, then tap <i>Turn on alerts</i>.</li><li><b>Computer:</b> tap <i>Turn on alerts</i>. They arrive while the browser is running in the background.</li><li>Alerts need the site to be on a secure (https) address, which every normal host provides. Do each step once on each device you want alerts on.</li></ol></details></section>
 <section class="card"><h2>Setting up <span class="muted">${done} of ${list.length} done</span></h2><div class="bar"><i style="width:${Math.round((done / list.length) * 100)}%"></i></div><ul class="checks">${list.map(([ok, t, p]) => `<li class="${ok ? 'ok' : ''}"><span aria-hidden="true">${ok ? '✓' : '○'}</span>${ok ? `<span>${esc(t)}</span>` : `<a href="/admin/${p}">${esc(t)}</a>`}</li>`).join('')}</ul></section>`;
   res.type('html').send(shell(req, 'Overview', body, ''));
 });
 router.get('/api/counts', (req, res) => res.json(counts()));
+router.get('/push/key', (req, res) => res.json({ key: push.publicKey(), devices: push.count() }));
+router.post('/push/subscribe', express.json({ limit: '8kb' }), needCsrf, (req, res) => res.status(push.save(req.body) ? 200 : 400).json({ ok: push.count() > 0 }));
+router.post('/push/unsubscribe', express.json({ limit: '8kb' }), needCsrf, (req, res) => { push.remove(req.body && req.body.endpoint); res.json({ ok: true }); });
+router.post('/push/test', express.json({ limit: '2kb' }), needCsrf, async (req, res) => { const n = await push.notifyAll({ title: 'Test alert', body: 'Alerts are working on this device.', url: '/admin', tag: 'test' }); res.json({ sent: n, devices: push.count() }); });
 
 /* ───────── bookings ───────── */
 const STATUSES = ['pending', 'confirmed', 'completed', 'declined'];

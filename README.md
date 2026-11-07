@@ -38,3 +38,17 @@ Passwords use scrypt. Admin sessions are server-side, HTTP-only cookies; every a
 ## Starter photographs
 
 On first run, if the gallery is empty, the photographs in `seed/photos/` are loaded and placed across the site (home hero, About page, each service, closing banner, gallery). Replace them with your own work in **Admin → Gallery**; use the buttons there to choose the home hero and About photo, and **Services & prices** to choose each service's photo.
+
+## Alerts for new bookings and messages
+
+The dashboard can send **push notifications** to your phone or computer the moment a booking request or message arrives, even when the browser or app is closed.
+
+1. Deploy the site on its secure (https) address and set `SITE_URL` (for example `https://akinphotography.com`).
+2. Open `/admin` on the device, go to **Overview → Alerts on this device**, and follow the steps there (Android: install the app from Chrome's menu; iPhone: Add to Home Screen, open it from there). Tap **Turn on alerts**.
+3. Do this once on each device that should get alerts.
+
+Keys are created automatically and stored in the database; you can fix them with `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` if you prefer. Browsers decide final delivery, so alerts can be delayed when a phone is in battery-saver mode.
+
+## Credit link
+
+The footer shows "Website by Oluwaseun", linking to the developer's portfolio. Change the address with `CREDIT_URL`.

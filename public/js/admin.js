@@ -62,24 +62,68 @@
     grid.addEventListener('dragend', function () { if (drag) drag.classList.remove('drag'); grid.querySelectorAll('.over').forEach(function (o) { o.classList.remove('over'); }); drag = null; });
   }
 
-  /* ── new booking / enquiry alerts ── */
+  /* ── phone / computer alerts (Web Push, work even when the browser is closed) ── */
   var last = Number(doc.body.getAttribute('data-total')) || 0, baseTitle = doc.title;
-  var alertsBtn = doc.getElementById('alerts');
-  if (alertsBtn && 'Notification' in window && Notification.permission === 'default') {
-    alertsBtn.hidden = false;
-    alertsBtn.addEventListener('click', function () { Notification.requestPermission().then(function () { alertsBtn.hidden = true; if (Notification.permission === 'granted') toast('Alerts are on while this page is open.'); }); });
+  var alertsBtn = doc.getElementById('alerts'), card = doc.getElementById('push-card');
+  var msgEl = doc.getElementById('push-msg'), onBtn = doc.getElementById('push-on'), testBtn = doc.getElementById('push-test');
+  var canPush = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  function b64(s) { var p = '='.repeat((4 - s.length % 4) % 4), r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')), a = new Uint8Array(r.length); for (var i = 0; i < r.length; i++) a[i] = r.charCodeAt(i); return a; }
+  function post(url, body) { return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify(body || {}) }); }
+  /* register the worker and wait until it is active (the page at /admin sits outside the /admin/ scope, so .ready would never fire there) */
+  function getReg() {
+    return navigator.serviceWorker.register('/admin/sw.js', { scope: '/admin/' }).then(function (reg) {
+      if (reg.active) return reg;
+      var w = reg.installing || reg.waiting;
+      if (!w) return reg;
+      return new Promise(function (resolve) { w.addEventListener('statechange', function () { if (w.state === 'activated') resolve(reg); }); if (w.state === 'activated') resolve(reg); });
+    });
   }
+  function state(on, text, noEnable) {
+    if (alertsBtn) { alertsBtn.hidden = !canPush || (!!noEnable && !on); alertsBtn.classList.toggle('on', on); alertsBtn.textContent = on ? '🔔 Alerts on (tap to test)' : '🔔 Turn on phone alerts'; }
+    if (msgEl) msgEl.textContent = text;
+    if (onBtn) onBtn.hidden = on || !canPush || !!noEnable;
+    if (testBtn) testBtn.hidden = !on;
+  }
+  function refresh() {
+    if (!canPush) { state(false, 'This browser cannot receive alerts. On an iPhone, add this admin to your Home Screen first (see below), then open it from there.', true); return Promise.resolve(); }
+    return getReg()
+      .then(function (reg) {
+        if (Notification.permission === 'denied') return state(false, 'Alerts are blocked for this site. Allow notifications in your browser settings for this address, then reload this page.', true);
+        return reg.pushManager.getSubscription().then(function (sub) {
+          if (!sub) return state(false, 'Alerts are off on this device. Turn them on to be told the moment someone sends a booking or message.');
+          return post('/admin/push/subscribe', sub.toJSON()).then(function () { state(true, 'Alerts are on for this device. You will be notified of new bookings and messages, even when the browser is closed.'); });
+        });
+      }).catch(function () { state(false, 'Could not set up alerts here. Make sure the site is opened on its secure (https) address.', true); });
+  }
+  function enable() {
+    if (!canPush) return;
+    Notification.requestPermission().then(function (perm) {
+      if (perm !== 'granted') return refresh();
+      return getReg()
+        .then(function (reg) {
+          return fetch('/admin/push/key', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (k) {
+            return reg.pushManager.getSubscription().then(function (sub) { return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(k.key) }); });
+          });
+        }).then(function (sub) { return post('/admin/push/subscribe', sub.toJSON()); })
+        .then(function () { return refresh(); }).then(function () { toast('Alerts are on. Sending a test…'); return sendTest(); });
+    }).catch(function () { toast('Could not turn on alerts on this device.'); });
+  }
+  function sendTest() { return post('/admin/push/test').then(function (r) { return r.json(); }).then(function (r) { if (!r.sent) toast('Test could not be delivered. Try turning alerts off and on again.'); }).catch(function () { toast('Test could not be sent.'); }); }
+  if (onBtn) onBtn.addEventListener('click', enable);
+  if (testBtn) testBtn.addEventListener('click', sendTest);
+  if (alertsBtn) alertsBtn.addEventListener('click', function () { if (alertsBtn.classList.contains('on')) sendTest(); else enable(); });
+  if (alertsBtn || card) refresh();
+
   function setPill(key, n) { doc.querySelectorAll('[data-pill="' + key + '"]').forEach(function (p) { p.textContent = n || ''; p.hidden = !n; }); }
   function poll() {
-    if (doc.hidden && !('Notification' in window && Notification.permission === 'granted')) return;
+    if (doc.hidden) return;
     fetch('/admin/api/counts', { credentials: 'same-origin', headers: { Accept: 'application/json' } }).then(function (r) { return r.ok ? r.json() : null; }).then(function (c) {
       if (!c) return;
       var total = c.b + c.e; setPill('b', c.b); setPill('e', c.e); setPill('t', total);
       doc.title = (total ? '(' + total + ') ' : '') + baseTitle.replace(/^\(\d+\) /, '');
       if (total > last) {
-        var msg = c.b > 0 && total - last > 0 ? 'New booking request or message' : 'New message';
+        var msg = 'New booking request or message';
         toast(msg + '. Open the inbox.', '/admin/bookings');
-        if ('Notification' in window && Notification.permission === 'granted' && doc.hidden) { try { new Notification('Akin Photography', { body: msg }); } catch (x) { /* ignore */ } }
       }
       last = total;
     }).catch(function () { /* offline: try again next time */ });
