@@ -22,7 +22,13 @@
   var v = doc.getElementById('viewer'), vi = v.querySelector('img'), cap = v.querySelector('figcaption'), count = v.querySelector('.v-count');
   var list = [], idx = 0, opener = null;
   function visible() { return shots.filter(function (s) { return !s.hidden; }); }
+  var zoomed = false, playBtn = v.querySelector('.v-play'), timer = null;
+  function unzoom() { zoomed = false; vi.classList.remove('zoom'); vi.style.transformOrigin = ''; }
+  function play(on) { clearInterval(timer); timer = null; playBtn.setAttribute('aria-pressed', on ? 'true' : 'false'); playBtn.textContent = on ? '❚❚ Pause' : '▶ Slideshow'; if (on) timer = setInterval(function () { if (!zoomed) show(idx + 1); }, 3800); }
+  playBtn.addEventListener('click', function () { play(!timer); });
+  vi.addEventListener('click', function (e) { if (zoomed) { unzoom(); return; } var r = vi.getBoundingClientRect(); vi.style.transformOrigin = ((e.clientX - r.left) / r.width * 100) + '% ' + ((e.clientY - r.top) / r.height * 100) + '%'; zoomed = true; vi.classList.add('zoom'); });
   function show(i) {
+    unzoom();
     idx = (i + list.length) % list.length; var s = list[idx];
     vi.style.opacity = 0;
     var next = new Image(); next.onload = function () { vi.src = next.src; vi.alt = s.getAttribute('data-alt') || ''; vi.style.opacity = 1; };
@@ -31,7 +37,7 @@
     var pre = list[(idx + 1) % list.length]; if (pre) (new Image()).src = pre.getAttribute('data-full');
   }
   function open(s) { list = visible(); opener = s.querySelector('a'); v.hidden = false; doc.body.style.overflow = 'hidden'; show(list.indexOf(s)); v.querySelector('.v-close').focus(); }
-  function close() { v.hidden = true; doc.body.style.overflow = ''; if (opener) opener.focus(); }
+  function close() { play(false); unzoom(); v.hidden = true; doc.body.style.overflow = ''; if (opener) opener.focus(); }
   grid.addEventListener('click', function (e) { var s = e.target.closest('.shot'); if (!s) return; e.preventDefault(); open(s); });
   v.querySelector('.v-close').addEventListener('click', close);
   v.querySelector('.v-prev').addEventListener('click', function () { show(idx - 1); });
@@ -39,7 +45,7 @@
   v.addEventListener('click', function (e) { if (e.target === v) close(); });
   doc.addEventListener('keydown', function (e) {
     if (v.hidden) return;
-    if (e.key === 'Escape') close(); else if (e.key === 'ArrowLeft') show(idx - 1); else if (e.key === 'ArrowRight') show(idx + 1);
+    if (e.key === ' ' && doc.activeElement !== playBtn) { e.preventDefault(); play(!timer); } else if (e.key === 'Escape') close(); else if (e.key === 'ArrowLeft') show(idx - 1); else if (e.key === 'ArrowRight') show(idx + 1);
     else if (e.key === 'Tab') { var f = [].slice.call(v.querySelectorAll('button')), first = f[0], last = f[f.length - 1]; if (e.shiftKey && doc.activeElement === first) { e.preventDefault(); last.focus(); } else if (!e.shiftKey && doc.activeElement === last) { e.preventDefault(); first.focus(); } }
   });
   var x0 = null; v.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; }, { passive: true });

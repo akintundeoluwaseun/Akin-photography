@@ -80,6 +80,7 @@ router.get('/', (req, res) => {
     <div class="mosaic n${Math.min(ft.length, 7)}">${ft.map((f, i) => `<a class="m m${i + 1} reveal" href="${L('/portfolio')}" tabindex="${i ? 0 : 0}">${img(f, '', '(min-width:900px) 40vw, 90vw')}</a>`).join('')}</div>
   </div>
 </section>
+${(() => { const g = gallery(''); if (g.sample || g.items.length < 4) return ''; const one = g.items.slice(0, 14); const row = (hide) => one.map((it) => `<a class="strip-item" href="${L('/portfolio')}" ${hide ? 'tabindex="-1" aria-hidden="true"' : ''}>${img(it, '', '34vw')}</a>`).join(''); return `<section class="strip" aria-label="${esc(t('featured_title'))}"><div class="strip-track">${row(false)}${row(true)}</div></section>`; })()}
 
 <section class="section tone" id="what">
   <div class="wrap">
@@ -171,12 +172,13 @@ router.get('/portfolio', (req, res) => {
 </div>
 <div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="${t('portfolio_title')}" hidden>
   <button class="v-close" aria-label="${t('viewer_close')}">×</button>
+  <button class="v-play" aria-label="Play slideshow" aria-pressed="false">▶ Slideshow</button>
   <button class="v-prev" aria-label="${t('viewer_prev')}">‹</button>
   <figure><img alt=""><figcaption></figcaption></figure>
   <button class="v-next" aria-label="${t('viewer_next')}">›</button>
   <p class="v-count" aria-live="polite"></p>
 </div>`;
-  page(req, res, { body, path: '/portfolio', title: t('portfolio_title'), scripts: ['/js/gallery.js?v=1'] });
+  page(req, res, { body, path: '/portfolio', title: t('portfolio_title'), scripts: ['/js/gallery.js?v=2'] });
 });
 
 /* ───────── booking ───────── */
