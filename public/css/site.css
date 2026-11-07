@@ -160,3 +160,4 @@ textarea{resize:vertical;min-height:130px}
 @media (min-width:900px){.hero-photo .hero-img{left:auto;right:0;width:60%;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 30%);mask-image:linear-gradient(90deg,transparent 0,#000 30%);object-position:50% 6%}}
 
 .site-footer .copy{display:flex;flex-wrap:wrap;gap:8px 24px;justify-content:space-between;align-items:center}.credit{font-size:.8rem;color:inherit;opacity:.65;text-decoration:none;letter-spacing:.04em;transition:opacity .2s,color .2s}.credit b{font-weight:500;color:var(--gold)}.credit:hover,.credit:focus-visible{opacity:1}
+.credit{display:inline-flex;align-items:center;gap:10px;opacity:.7;transition:opacity .2s,transform .2s}.credit span{font-size:.74rem;letter-spacing:.14em;text-transform:uppercase}.credit img{display:block;height:20px;width:auto}.credit:hover,.credit:focus-visible{opacity:1;transform:translateY(-1px)}
