@@ -6,7 +6,7 @@ module.exports = (req, res) => {
   t('better-sqlite3', () => { const D = require('better-sqlite3'); const d = new D(':memory:'); return ' ' + d.prepare('select sqlite_version() v').get().v; });
   t('sharp', () => ' ' + require('sharp').versions.sharp);
   t('express', () => ' ' + require('express/package.json').version);
-  t('web-push', () => { require('web-push'); });
+  t('push module', () => { require('../lib/push'); });
   t('write /tmp', () => { require('fs').writeFileSync('/tmp/_h', '1'); });
   t('public folder', () => ' ' + require('fs').readdirSync('public').length + ' items');
   t('seed photos', () => ' ' + require('fs').readdirSync('seed/photos').length + ' files');
