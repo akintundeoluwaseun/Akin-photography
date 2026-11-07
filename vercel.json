@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "functions": { "api/index.js": { "includeFiles": "{public,seed}/**", "maxDuration": 30 } },
+  "functions": { "api/index.js": { "includeFiles": "{public,seed,node_modules/better-sqlite3,node_modules/@img,node_modules/sharp}/**", "maxDuration": 30 } },
   "git": { "deploymentEnabled": { "data": false } },
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
 }

@@ -18,7 +18,7 @@ cp .env.example .env      # then edit
 npm start                 # http://localhost:3000
 ```
 
-Sign in at `/admin` with the phone number **07030129673** and the password you were given. The sign-in is defined in the code (`lib/admin-account.js`, a phone number and a password hash). Change either under **Settings → Account**.
+Sign in at `/admin` by typing only the phone number **07030129673** (no password). The number is set in `lib/admin-account.js`; it can be changed under **Settings → Account**.
 
 ## Deploy
 

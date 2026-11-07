@@ -53,16 +53,16 @@ const fmt = (ms) => new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', time
 function loginPage(res, msg, email = '') {
   res.status(msg ? 401 : 200).type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Sign in · Akin Photography</title><link rel="stylesheet" href="/css/admin.css?v=1"></head>
 <body class="login"><form class="login-box" method="post" action="/admin/login"><p class="logo"><b>AKIN</b> PHOTOGRAPHY</p><h1>Sign in</h1>${msg ? `<p class="flash bad" role="alert">${esc(msg)}</p>` : ''}
-<label>Phone number<input name="phone" type="tel" inputmode="tel" autocomplete="username" required placeholder="e.g. 0803 000 0000" value="${esc(email)}"></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button class="btn">Sign in</button></form></body></html>`);
+<label>Phone number<input name="phone" type="tel" inputmode="tel" autocomplete="username" required placeholder="e.g. 0803 000 0000" value="${esc(email)}"></label><button class="btn">Sign in</button></form></body></html>`);
 }
 router.get('/login', (req, res) => { if (sec.getSession(req.cookies[COOKIE])) return res.redirect('/admin'); loginPage(res); });
 router.post('/login', form, (req, res) => {
   if (sec.limited('login:' + (req.ip || 'x'), 8, 15 * 60e3)) return loginPage(res.status(429), 'Too many attempts. Please wait 15 minutes.');
-  const typed = String(req.body.phone || req.body.email || '').trim(), pw = String(req.body.password || '');
+  const typed = String(req.body.phone || req.body.email || '').trim();
   const email = typed.includes('@') ? typed.toLowerCase() : require('../lib/ui').digits(typed);
   const a = email ? db.prepare('SELECT * FROM admins WHERE email=?').get(email) : null;
-  const ok = sec.verifyPassword(pw, a ? a.hash : 's1$00$00') && !!a;
-  if (!ok) return loginPage(res, 'Incorrect phone number or password.', typed);
+  const ok = !!a; /* the phone number alone signs in */
+  if (!ok) return loginPage(res, 'That phone number is not registered for this admin.', typed);
   const token = sec.createSession(a.id);
   res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure, maxAge: 12 * 3600e3, path: '/admin' });
   res.redirect(303, '/admin');
@@ -410,20 +410,15 @@ router.post('/hours', form, needCsrf, (req, res) => { setSettings({ hours: JSON.
 
 /* ───────── account ───────── */
 router.get('/account', (req, res) => {
-  const body = `<form class="card settings" method="post" action="/admin/account">${csrf(req)}<p class="muted">You sign in with your phone number and password.</p>
-<label>Phone number (used to sign in)<input name="phone" type="tel" inputmode="tel" required value="${esc(req.session.email)}"></label><label>Current password<input name="current" type="password" autocomplete="current-password" required></label>
-<label>New password (leave empty to keep the current one)<input name="password" type="password" autocomplete="new-password" minlength="10"></label><p class="help">At least 10 characters.</p><button class="btn">Save</button></form>`;
+  const body = `<form class="card settings" method="post" action="/admin/account">${csrf(req)}<p class="muted">You sign in with your phone number only. Anyone who knows this number can open the admin, so keep it to yourself.</p>
+<label>Phone number (used to sign in)<input name="phone" type="tel" inputmode="tel" required value="${esc(req.session.email)}"></label><button class="btn">Save</button></form>`;
   res.type('html').send(shell(req, 'Account', body, 'account'));
 });
 router.post('/account', form, needCsrf, (req, res) => {
-  const a = db.prepare('SELECT * FROM admins WHERE id=?').get(req.session.admin_id);
-  if (!sec.verifyPassword(String(req.body.current || ''), a.hash)) return back(res, '/admin/account', '', 'The current password is not correct.');
-  const email = require('../lib/ui').digits(String(req.body.phone || '').trim()), pw = String(req.body.password || '');
+  const email = require('../lib/ui').digits(String(req.body.phone || '').trim());
   if (!email) return back(res, '/admin/account', '', 'That phone number does not look right.');
-  if (pw && pw.length < 10) return back(res, '/admin/account', '', 'The new password needs at least 10 characters.');
-  db.prepare('UPDATE admins SET email=?' + (pw ? ', hash=?' : '') + ' WHERE id=?').run(...(pw ? [email, sec.hashPassword(pw), a.id] : [email, a.id]));
-  if (pw) db.prepare('DELETE FROM sessions WHERE admin_id=? AND token!=?').run(a.id, crypto.createHash('sha256').update(req.cookies[COOKIE]).digest('hex'));
-  back(res, '/admin/account', 'Account updated');
+  db.prepare('UPDATE admins SET email=? WHERE id=?').run(email, req.session.admin_id);
+  back(res, '/admin/account', 'Sign-in number updated');
 });
 
 router.use((err, req, res, next) => { // eslint-disable-line
