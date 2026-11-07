@@ -1,0 +1,31 @@
+{
+  "name": "akin-photography",
+  "version": "1.0.0",
+  "description": "Website, booking and admin dashboard for Akin Photography, Ado-Ekiti",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/akintundeoluwaseun/akin-photography.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/akintundeoluwaseun/akin-photography/issues"
+  },
+  "homepage": "https://github.com/akintundeoluwaseun/akin-photography#readme",
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.3.0",
+    "multer": "^2.5.0",
+    "sharp": "^0.35.5"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "private": true
+}
