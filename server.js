@@ -10,7 +10,7 @@ const { hashPassword } = require('./lib/security');
 const ui = require('./lib/ui');
 const { router: publicRouter, page } = require('./routes/public');
 const adminRouter = require('./routes/admin');
-const { make } = require('./lib/i18n');
+const { t: T_ } = require('./lib/i18n');
 const images = require('./lib/images');
 
 const app = express();
@@ -60,8 +60,8 @@ app.get('/og-default.svg', (req, res) => res.type('image/svg+xml').send('<svg xm
 app.get('/robots.txt', (req, res) => res.type('text/plain').send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /booking/received/\n\nSitemap: ${ui.baseUrl(req)}/sitemap.xml\n`));
 app.get('/sitemap.xml', (req, res) => {
   const base = ui.baseUrl(req), paths = ['/', '/about', '/services', '/portfolio', '/pricing', '/booking', '/contact'];
-  const url = (p, alt) => `<url><loc>${base}${p}</loc>${alt}</url>`;
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${paths.map((p) => { const yo = '/yo' + (p === '/' ? '' : p); const alt = `<xhtml:link rel="alternate" hreflang="en" href="${base}${p}"/><xhtml:link rel="alternate" hreflang="yo" href="${base}${yo}"/>`; return url(p, alt) + '\n' + url(yo, alt); }).join('\n')}\n</urlset>`;
+  const url = (p) => `<url><loc>${base}${p}</loc></url>`;
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${paths.map(url).join('\n')}\n</urlset>`;
   res.type('application/xml').send(xml);
 });
 
@@ -70,7 +70,7 @@ app.use('/', publicRouter);
 
 /* ── errors ── */
 app.use((req, res) => {
-  if (!req.ctx) req.ctx = { lang: 'en', t: make('en'), S: settings(), L: (p) => p };
+  if (!req.ctx) req.ctx = { t: T_, S: settings(), L: (p) => p };
   const { t, L } = req.ctx;
   res.status(404);
   page(req, res, { title: t('e404_title'), noindex: true, body: `<section class="err-page wrap"><p class="eyebrow dark">404</p><h1>${t('e404_title')}</h1><p class="lead">${t('e404_text')}</p><a class="btn btn-dark" href="${L('/')}">${t('conf_home')}</a></section>` });
@@ -78,7 +78,7 @@ app.use((req, res) => {
 app.use((err, req, res, next) => { // eslint-disable-line
   console.error(err);
   if (res.headersSent) return next(err);
-  if (!req.ctx) req.ctx = { lang: 'en', t: make('en'), S: settings(), L: (p) => p };
+  if (!req.ctx) req.ctx = { t: T_, S: settings(), L: (p) => p };
   const { t, L } = req.ctx;
   res.status(err.status || 500);
   page(req, res, { title: t('e500_title'), noindex: true, body: `<section class="err-page wrap"><p class="eyebrow dark">${err.status || 500}</p><h1>${t('e500_title')}</h1><p class="lead">${t('e500_text')}</p><a class="btn btn-dark" href="${L('/')}">${t('conf_home')}</a></section>` });
@@ -99,7 +99,9 @@ function ensureAdmin() {
   console.log('──────────────────────────────────────────────\n');
 }
 ensureAdmin();
+const ready = require('./lib/seed').seedPhotos().catch((e) => console.error(e));
 
 const PORT = Number(process.env.PORT) || 3000;
-if (require.main === module) app.listen(PORT, () => console.log(`Akin Photography running on http://localhost:${PORT}`));
+if (require.main === module) ready.then(() => app.listen(PORT, () => console.log(`Akin Photography running on http://localhost:${PORT}`)));
+app.ready = ready;
 module.exports = app;

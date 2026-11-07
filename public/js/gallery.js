@@ -1,8 +1,8 @@
 /* Portfolio: instant category filtering and a full-screen viewer with keyboard and swipe. */
 (function () {
   'use strict';
-  var doc = document, lang = doc.body.getAttribute('data-lang');
-  var of = lang === 'yo' ? 'nínú' : 'of';
+  var doc = document;
+  var of = 'of';
   var grid = doc.getElementById('masonry'), filters = doc.querySelector('.filters'), empty = doc.getElementById('gallery-empty');
   if (!grid) return;
   var shots = [].slice.call(grid.querySelectorAll('.shot'));

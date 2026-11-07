@@ -2,11 +2,11 @@
 
 Website, booking system and admin dashboard for **Akin Photography**, Onala Street, Ado-Ekiti, Ekiti State.
 
-- Seven public pages in **English and Yoruba** (`/` and `/yo/`): Home, About, Services, Portfolio, Pricing, Booking, Contact
+- Seven public pages in English: Home, About, Services, Portfolio, Pricing, Booking, Contact
 - Booking requests are stored in the dashboard and can be sent to the business on **WhatsApp**
 - Admin dashboard at `/admin`: gallery upload, services and prices, bookings, enquiries, testimonials, opening hours, social links, page text
 - Photographs are resized automatically (WebP, three sizes) for fast loading on slow connections
-- SEO: per-page titles and descriptions, Open Graph, hreflang, JSON-LD, `sitemap.xml`, `robots.txt`
+- SEO: per-page titles and descriptions, Open Graph, JSON-LD, `sitemap.xml`, `robots.txt`
 
 Nothing is invented. Phone, WhatsApp, email, prices and testimonials start **empty** and buttons that need them stay hidden until the owner fills them in. Until photographs are uploaded, tasteful tonal tiles stand in for them.
 
@@ -35,6 +35,6 @@ Back up the `DATA_DIR` folder regularly: it holds every booking and photograph.
 
 Passwords use scrypt. Admin sessions are server-side, HTTP-only cookies; every admin form carries a CSRF token. Public forms have CSRF tokens, a honeypot and rate limits. Uploads are re-encoded by `sharp`, so non-images are rejected. A strict Content-Security-Policy is sent on every page. No secret is ever sent to the browser.
 
-## Yoruba text
+## Starter photographs
 
-The Yoruba is written to read naturally, but please have a fluent Yoruba speaker review it. Every Yoruba line can be edited in the dashboard (home, about, services, testimonials); interface labels live in `lib/i18n.js`.
+On first run, if the gallery is empty, the photographs in `seed/photos/` are loaded and placed across the site (home hero, About page, each service, closing banner, gallery). Replace them with your own work in **Admin → Gallery**; use the buttons there to choose the home hero and About photo, and **Services & prices** to choose each service's photo.
